@@ -13,15 +13,16 @@ This project does two things:
 
 
 ## 📌 Repository Structure
-my-aws-iac-project/
-├── packer/
-│   └── amazon-linux-docker.pkr.hcl
-├── terraform/
-│   ├── main.tf
-│   ├── variables.tf
-│   └── outputs.tf
-└── README.md
-
+<pre> ``` 
+    my-aws-iac-project/
+    ├── packer/
+    │   └── amazon-linux-docker.pkr.hcl
+    ├── terraform/
+    │   ├── main.tf
+    │   ├── variables.tf
+    │   └── outputs.tf
+    └── README.md
+``` </pre>
 ---
 
 
@@ -142,8 +143,8 @@ You show see below screenshots with Terraform apply
 ![PR Failure Screenshot](./screenshots/6_instance_private_subnet.png)
 
 2. **Bastion host accept only your IP on port 22**
-![PR Failure Screenshot](./screenshots/accept_only_ip_22_1.png)
-![PR Failure Screenshot](./screenshots/accept_only_ip_22.png)
+![PR Failure Screenshot](./screenshots/accept_only_your_ip_22_1.png)
+![PR Failure Screenshot](./screenshots/accept_only_your_ip_22.png)
 
 3. **Bastion host instance in public subnet and have public IP**
 ![PR Failure Screenshot](./screenshots/bastion_instnce_in_public_subnet.png)
