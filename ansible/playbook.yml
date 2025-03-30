@@ -1,0 +1,47 @@
+- name: Manage EC2 instances
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Update packages on Ubuntu
+      apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+
+    - name: Update packages on Amazon Linux
+      shell: |
+        yum update -y
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Docker on Ubuntu
+      shell: |
+        if ! command -v docker &>/dev/null; then
+          curl -fsSL https://get.docker.com | sh
+        fi
+      when: ansible_os_family == "Debian"
+
+    - name: Install Docker on Amazon Linux
+      shell: |
+        if ! command -v docker &>/dev/null; then
+          yum install -y docker
+          systemctl enable docker
+          systemctl start docker
+        fi
+      when: ansible_os_family == "RedHat"
+
+    - name: Print Docker version
+      command: docker --version
+      register: docker_output
+
+    - name: Show Docker version
+      debug:
+        var: docker_output.stdout
+
+    - name: Check disk usage
+      command: df -h /
+      register: disk_usage
+
+    - name: Show disk usage
+      debug:
+        var: disk_usage.stdout
