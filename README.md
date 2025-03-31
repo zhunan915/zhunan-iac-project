@@ -2,12 +2,30 @@
 
 ## 📌 Overview
 
-This project does two things:
-1. **Packer** creates a custom Amazon Linux AMI with Docker installed and your SSH public key added.
-2. **Terraform** provisions AWS infrastructure:
-   - A new VPC with public and private subnets (using a module)
-   - A bastion host in the public subnet (accessible only from your IP)
-   - 6 EC2 instances in the private subnets running the custom AMI
+This project automates infrastructure and configuration using **Packer**, **Terraform**, and **Ansible**.
+
+### 🔨 Packer
+Builds a **custom Amazon Linux AMI** with:
+- Docker pre-installed
+- SSH public key added
+
+### 🌐 Terraform
+Provisions AWS infrastructure:
+- A VPC with public and private subnets (via module)
+- A **bastion host** in the public subnet (for SSH access)
+- **6 EC2 instances** in private subnets:
+  - 3 x Ubuntu (tagged `OS=ubuntu`)
+  - 3 x Amazon Linux (tagged `OS=amazon`)
+- **1 EC2 Ansible controller** (Ubuntu) inside a private subnet
+
+### ⚙️ Ansible
+From the controller, we use Ansible with **dynamic inventory** to:
+- Connect to the 6 private EC2s
+- Run a playbook that:
+  - Updates & upgrades packages (`apt` for Ubuntu, `yum` for Amazon Linux)
+  - Installs Docker (if not already installed)
+  - Prints the Docker version
+  - Reports disk usage (`df -h /`)
 
 ---
 
@@ -15,13 +33,22 @@ This project does two things:
 ## 📌 Repository Structure
 <pre> ``` 
     my-aws-iac-project/
-    ├── packer/
-    │   └── amazon-linux-docker.pkr.hcl
-    ├── terraform/
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    └── README.md
+├── ansible/
+│   ├── ansible.cfg
+│   ├── aws_ec2.yaml
+│   ├── playbook.yml
+│   └── group_vars/
+│       ├── os_amazon/
+│       │   └── main.yml     
+│       └── os_ubuntu/
+│           └── main.yml     
+├── packer/
+│   └── amazon-linux-docker.pkr.hcl
+├── terraform/
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf
+└── README.md
 ``` </pre>
 ---
 
@@ -37,50 +64,12 @@ This project does two things:
 
 ---
 
+# 🔹 Step 1: Build the Terraform
 
-### 🔹 Step 1: Build the Custom AMI with Packer
-1. **Navigate to the `packer/` directory**:
+1. **Navigate to the terraform/ directory**
 ```bash
-    cd packer
+    cd terraform
 ```
-2. **Initialize, validate, and build the AMI**
-```sh
-    packer init .
-    packer validate .
-    packer build amazon-linux-docker.pkr.hcl
-```
-You show see below screenshots with Packer
-![PR Failure Screenshot](./screenshots/packer_init.png)
-![PR Failure Screenshot](./screenshots/packer_validate.png)
-![PR Failure Screenshot](./screenshots/packer_build_1.png)
-![PR Failure Screenshot](./screenshots/packer_build_2.png)
-
-**Output will be customerized AMI ID**
-```sh
-    ==> amazon-ebs.amazon_linux: Creating AMI amazon-linux-docker-1742749240 from instance i-0b09d8a30ebe9e666
-    ==> amazon-ebs.amazon_linux: AMI: ami-033902bac590411ea
-    ==> Builds finished. The artifacts of successful builds are:
-    --> amazon-ebs.amazon_linux: AMIs were created:
-    us-east-1: ami-033902bac590411ea
-```
-**Copy this AMI ID for use in later Terraform deployment.**
-
----
-
-### 🔹 Step 3: Build the Terraform
-
-0. **Navigate to the terraform/ directory**
-```bash
-    cd ../terraform
-```
-
-1. **Build Terraform if needed**
-```sh
-    brew tap hashicorp/tap
-    brew install hashicorp/tap/terraform
-    terraform -v
-```
-![PR Failure Screenshot](./screenshots/Terraform_version.png)
 
 2. **Initialize and apply Terraform:**
 ```sh
@@ -90,70 +79,137 @@ You show see below screenshots with Packer
 ```
 
 You show see below screenshots with Terraform apply
-![PR Failure Screenshot](./screenshots/tf_init.png)
-![PR Failure Screenshot](./screenshots/tf_plan_1.png)
-![PR Failure Screenshot](./screenshots/tf_plan_2.png)
-![PR Failure Screenshot](./screenshots/tf_apply.png)
+![PR Failure Screenshot](./screenshots/1.png)
+![PR Failure Screenshot](./screenshots/2.png)
 
 ```sh
     Outputs:
 
-    app_instance_ids = [
-    "i-0569ed1e15afdc828",
-    "i-0969e13d08e7edc36",
-    "i-060cacd99f47d6581",
-    "i-0e0533dc9b37c13b2",
-    "i-0cf15251efbba075e",
-    "i-0cbd1b15e26b80c7f",
+    amazon_private_ips = [
+        "10.0.3.199",
+        "10.0.4.164",
+        "10.0.3.240",
     ]
 
-    bastion_public_ip = "3.84.40.18"
+    ansible_controller_private_ip = "10.0.3.179"
+
+    app_instance_ids = [
+        "i-0a1fbdba3e337191a",
+        "i-0133c4d62ee51c63e",
+        "i-050c74c7216b6d659",
+        "i-0a9f616d9a16c921e",
+        "i-0fcd235a743e1c068",
+        "i-0430176d9379498b8",
+    ]
+
+    bastion_public_ip = "44.211.252.152"
+
+    ubuntu_private_ips = [
+        "10.0.3.197",
+        "10.0.4.53",
+        "10.0.3.9",
+    ]
 ```
 
 **Note the outputs**
-1. Bastion Public IP for SSH access.
-2. Private EC2 Instance IDs
+1. 3 amazon linux private IP
+2. 3 ubuntu private IP
+3. 1 bastion host public IP
+4. 1 ansible controller pirvate IP
+5. Private EC2 Instance IDs
+
+You will provision a total of **7 EC2 instances** from Terraform:
+
+| Instance Type               | Count | Notes                                      |
+|----------------------------|-------|--------------------------------------------|
+| Ubuntu EC2                 | 3     | Tag: `OS = ubuntu`                         |
+| Amazon Linux EC2           | 3     | Tag: `OS = amazon`                         |
+| Ansible Controller (Ubuntu)| 1     | No OS tag needed, tag as `Name = AnsibleController` |
 
 ---
 
-### 🔹 Step 3: SSH into bastion host && access to all 6 EC2 from bastion host
+- All 7 go in **private subnets** 🔒  
+- Only the **bastion host** lives in the **public subnet** with a public IP for SSH jump access.
+
+
+You should able to see all instances are running in AWS console
+![PR Failure Screenshot](./screenshots/3.png)
+
+---
+
+### 🔹 Step 2: SSH into bastion host && access to ansible controller
 ```sh
-    ssh -A -i ~/Desktop/zhunan-new.pem ec2-user@3.84.40.18
+    ssh -A -i ~/Desktop/zhunan-new.pem ec2-user@44.211.252.152
 ```
-![PR Failure Screenshot](./screenshots/bastion_host.png)
+![PR Failure Screenshot](./screenshots/4.png)
 
-**list all 7 instances and ssh into all 6 instances**
-![PR Failure Screenshot](./screenshots/6_instance_1.png)
-![PR Failure Screenshot](./screenshots/6_isntance_2.png)
-
-**SSH into instance examples from baston host**
+**SSH into ansible controller from baston host**
 ```sh
-    ssh ec2-user@10.0.3.120
+    ssh ubuntu@10.0.3.179
 ```
-![PR Failure Screenshot](./screenshots/ssh_instance.png)
+![PR Failure Screenshot](./screenshots/5.png)
+
+---
+
+### 🔹 Step 3: Install Ansible Controller
+
+**Navigate to the ansible/ directory**
+```bash
+    cd ansible
+```
+
+```sh
+    sudo apt update
+    sudo apt install -y software-properties-common
+    sudo add-apt-repository --yes --update ppa:ansible/ansible
+    sudo apt install -y ansible python3-boto3
+```
+
+---
 
 
-### 🔹 Step 4: Evidences for VPC, subnets, public subnets, all necessary routes, bastion host in the public subnet, 6 EC2 instances in the private subnet
+### 🔹 Step 4: Create Dynamic Inventory aws_ec2.yaml
+![PR Failure Screenshot](./screenshots/6.png)
 
-0. **Shows bastion host EC2 and all 6 private EC2**
-![PR Failure Screenshot](./screenshots/all_6_instance_bastion_ec2.png)
+**Test Inventory: visualize the structure of dynamic inventory**
+```sh
+    ansible-inventory -i aws_ec2.yaml --graph
+```
+outputs:
+![PR Failure Screenshot](./screenshots/7.png)
 
+---
 
-1. **All 6 private instance are in the private subnet with no public IP, only private IP**
-![PR Failure Screenshot](./screenshots/6_instance_private_subnet.png)
-
-2. **Bastion host accept only your IP on port 22**
-![PR Failure Screenshot](./screenshots/accept_only_your_ip_22_1.png)
-![PR Failure Screenshot](./screenshots/accept_only_your_ip_22.png)
-
-3. **Bastion host instance in public subnet and have public IP**
-![PR Failure Screenshot](./screenshots/bastion_instnce_in_public_subnet.png)
-
-4. **Show routes table && security group**
-![PR Failure Screenshot](./screenshots/routes_table.png)
-![PR Failure Screenshot](./screenshots/sg.png)
-
-5. **Show VPC private and public subnets**
-![PR Failure Screenshot](./screenshots/vpc_priva_pub.png)
+### 🔹 Step 5: Create Playbook
+![PR Failure Screenshot](./screenshots/8.png)
 
 
+**Import key pem from local to ansible controller, Use scp with a Bastion Jump Host, Since your Ansible controller is in a private subnet, you must proxy through your Bastion host.**
+```bash
+scp -i ~/Desktop/zhunan-new.pem -o "ProxyJump ec2-user@44.211.252.152" ~/Desktop/zhunan-new.pem ubuntu@10.0.3.179:~/
+```
+![PR Failure Screenshot](./screenshots/9.png)
+
+
+```sh
+    ansible-playbook -i aws_ec2.yaml playbook.yml
+```
+or
+```sh
+    ansible-playbook playbook.yml
+```
+
+This command runs Ansible playbook (playbook.yml) using a dynamic inventory file (aws_ec2.yaml) to discover and target EC2 instances.
+
+-i aws_ec2.yaml: Uses the EC2 plugin to find your instances dynamically by tags/filters.
+
+playbook.yml: This file includes your tasks:
+✅ Update & upgrade packages
+✅ Check Docker version (and install if missing)
+✅ Report disk usage
+
+You should see below outputs
+![PR Failure Screenshot](./screenshots/10.png)
+![PR Failure Screenshot](./screenshots/11.png)
+![PR Failure Screenshot](./screenshots/12.png)
+![PR Failure Screenshot](./screenshots/13.png)
